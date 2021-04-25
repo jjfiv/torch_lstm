@@ -15,8 +15,11 @@ def _read_text_vectors(fp: TextIO, total: Optional[int]) -> WordEmbeddings:
     for line in tqdm(fp, total=total):
         split = line.index(" ")
         word = line[:split]
+        data = np.fromstring(line[split + 1 :], dtype=np.float32, sep=" ")
+        if len(data) == 1:
+            continue
         word_to_row[word] = len(vectors)
-        vectors.append( np.fromstring(line[split + 1 :], dtype=np.float32, sep=" ") )
+        vectors.append( data )
     return WordEmbeddings(word_to_row, np.vstack(vectors))
 
 def load_text_vectors(path: str, total: Optional[int]=None) -> WordEmbeddings:

@@ -1,7 +1,6 @@
 #%%
 import numpy as np
 from typing import Tuple, Dict, List
-from numpy.lib.npyio import load
 import pandas as pd
 import torch
 from torch_lstm.word_embeddings import load_text_vectors, WordEmbeddings
@@ -15,7 +14,8 @@ from sklearn.utils import shuffle
 from sklearn import metrics
 import os
 
-PATH = os.environ["HOME"] + "/data/glove.6B.100d.txt.gz"
+#PATH = os.environ["HOME"] + "/data/glove.6B.100d.txt.gz"
+PATH = 'poetry50k.model.vec.gz'
 glove_embeddings = load_text_vectors(PATH, 400000)
 
 # start off by seeding random number generators:
@@ -95,7 +95,7 @@ def eval_model(
             epoch_pred.extend(((y_scores[:, 1] - y_scores[:, 0]) > 0).tolist())
             losses.append(loss.item())
             progress.set_description(
-                "Acc: {:.03} Loss: {:.03}".format(
+                "Eval Acc: {:.03} Loss: {:.03}".format(
                     metrics.accuracy_score(y[: len(epoch_pred)], epoch_pred),
                     np.mean(losses),
                 )
@@ -127,16 +127,19 @@ def train_epoch(clf: torch.nn.Module, sequence_limit=32, batch_size=32):
             losses.append(loss.item())
 
             progress.set_description(
-                "Acc: {:.03} Loss: {:.03}".format(
+                "Train Acc: {:.03} Loss: {:.03}".format(
                     metrics.accuracy_score(y[: len(epoch_pred)], epoch_pred),
                     np.mean(losses),
                 )
             )
 
-
-train_epoch(clf, 16, 64)
-train_epoch(clf, 32, 32)
-train_epoch(clf, 32, 32)
-train_epoch(clf, 64, 16)
-train_epoch(clf, 128, 64)
+smaller = [32,32,64,64]
+for epoch in range(10):
+    print("Epoch {}".format(epoch+1))
+    width = 128
+    if epoch < len(smaller):
+        width = smaller[epoch]
+    train_epoch(clf, width, 64)
+    if epoch >= 4:
+        eval_model(clf, sequence_limit=width)
 # %%
