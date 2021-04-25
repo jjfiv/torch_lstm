@@ -1,3 +1,4 @@
+from torch.nn.modules import loss
 from torch_lstm.word_embeddings import WordEmbeddings
 from torch.nn.functional import dropout, embedding
 from .utils import pack_lstm
@@ -9,6 +10,7 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 from .word_embeddings import WordEmbeddings
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.utils import shuffle
 
 
 @dataclass
@@ -183,3 +185,47 @@ class SequenceClassifier(nn.Module):
             return (dropout(self.output_layer(layer), p=self.dropout))
         else:
             return (dropout(self.output_layer(lstm_output), p=self.dropout))
+
+#%%
+def train_epoch(clf: torch.nn.Module, optimizer: torch.optim.Optimizer, loss_function: torch.nn.Module, words_train: List[List[str]], y_train: List[int], sequence_limit=32, batch_size=32, device='cpu'):
+    clf.train()
+    N = len(words_train)
+    X, y = shuffle(words_train, y_train)
+    epoch_pred = []
+    losses = []
+    for start in range(0, N, batch_size):
+        clf.train()
+        end = min(start + batch_size, N)
+        X_batch = [x[:sequence_limit] for x in X[start:end]]
+        y_batch = torch.tensor(y[start:end], dtype=torch.long).to(device)
+        clf.zero_grad()
+        y_scores = clf(device, X_batch)
+        loss = loss_function(y_scores, y_batch)
+        loss.backward()
+        optimizer.step()
+
+        clf.eval()
+        epoch_pred.extend(((y_scores[:, 1] - y_scores[:, 0]) > 0).tolist())
+        losses.append(loss.item())
+        print("Train Loss: {:.03}".format( np.mean(losses[-10:]) ))
+
+def test_tiny():
+    y_train = [1, 1, 0, 0]
+    X_train = ["I am happy.", "This is great!", "I am sad.", "This is bad."]
+    config = DatasetConfig()
+    X_ready = config.fit_transform(X_train)
+    clf = SequenceClassifier(
+        config,
+        char_dim=0,
+        char_lstm_dim=0,
+        lstm_size=100,
+        gen_layer=100,
+        hidden_layer=100,
+        labels=[0, 1],
+        dropout=0.0,
+        activation='gelu',
+        averaging=(6,4)
+    )
+    optimizer = torch.optim.Adam(params=clf.parameters())
+    loss_function = torch.nn.CrossEntropyLoss()
+    train_epoch(clf, optimizer, loss_function, X_ready, y_train)
