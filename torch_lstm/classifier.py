@@ -208,6 +208,7 @@ def train_epoch(clf: torch.nn.Module, optimizer: torch.optim.Optimizer, loss_fun
         epoch_pred.extend(((y_scores[:, 1] - y_scores[:, 0]) > 0).tolist())
         losses.append(loss.item())
         print("Train Loss: {:.03}".format( np.mean(losses[-10:]) ))
+    assert(len(losses) > 0)
 
 def test_tiny():
     y_train = [1, 1, 0, 0]
