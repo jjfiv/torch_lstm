@@ -3,7 +3,7 @@ from torch.nn.functional import dropout, embedding
 from .utils import pack_lstm
 import torch
 from torch import nn
-from torch.nn.functional import relu6, dropout, sigmoid
+from torch.nn.functional import dropout 
 import numpy as np
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
@@ -64,7 +64,20 @@ class DatasetConfig:
     def word_to_char_indices(self, word: str) -> List[int]:
         return [self.character_vocab.get(ch, 0) for ch in self.word_to_chars(word)]
 
-
+def activation_func(name: str):
+    import torch.nn.functional
+    if name == 'relu6':
+        return torch.nn.functional.relu6
+    elif name == 'relu':
+        return torch.nn.functional.relu
+    elif name == 'sigmoid':
+        return torch.nn.functional.sigmoid
+    elif name == 'gelu':
+        return torch.nn.functional.gelu
+    elif name == 'tanh':
+        return torch.nn.functional.tanh
+    else:
+        raise ValueError(name)
 
 class SequenceClassifier(nn.Module):
     def __init__(
@@ -77,12 +90,14 @@ class SequenceClassifier(nn.Module):
         gen_layer: int = 100,
         hidden_layer: int = 0,
         dropout: float = 0.1,
-        labels: List[int] = [0,1]
+        labels: List[int] = [0,1],
+        activation: str = 'gelu',
     ):
         super(SequenceClassifier, self).__init__()
         self.config = config
         self.dropout = dropout
         self.labels = labels
+        self.activation = activation_func(activation)
         word_repr_size = 0
         if char_dim > 0:
             self.char_embed = nn.Embedding(len(config.character_vocab) + 1, char_dim)
@@ -114,6 +129,7 @@ class SequenceClassifier(nn.Module):
         
 
     def forward(self, device: torch.device, xs: List[List[str]]) -> torch.Tensor:
+        activate = self.activation
         N = len(xs)
         predictions = []
         word_outputs = []
@@ -141,7 +157,7 @@ class SequenceClassifier(nn.Module):
                 word_output = word_reprs[0]
             
             if hasattr(self, 'gen_layer'):
-                lstm_input = dropout(relu6(self.gen_layer(dropout(word_output, p=self.dropout))), p=self.dropout)
+                lstm_input = dropout(activate(self.gen_layer(dropout(word_output, p=self.dropout))), p=self.dropout)
             else:
                 lstm_input = dropout(word_output, p=self.dropout)
             word_outputs.append(lstm_input.transpose(1,2).reshape(lstm_input.shape[1], lstm_input.shape[2]))
@@ -150,7 +166,7 @@ class SequenceClassifier(nn.Module):
         lstm_output = pack_lstm(word_outputs, self.word_lstm)
 
         if hasattr(self, 'prediction_layer'):
-            layer = relu6(self.prediction_layer(dropout(lstm_output, p=self.dropout)))
+            layer = activate(self.prediction_layer(dropout(lstm_output, p=self.dropout)))
             return (dropout(self.output_layer(layer), p=self.dropout))
         else:
             return (dropout(self.output_layer(lstm_output), p=self.dropout))
