@@ -15,7 +15,7 @@ from sklearn.utils import shuffle
 from sklearn import metrics
 import os
 
-PATH = os.environ["HOME"] + "/data/glove.6B.50d.txt.gz"
+PATH = os.environ["HOME"] + "/data/glove.6B.100d.txt.gz"
 glove_embeddings = load_text_vectors(PATH, 400000)
 
 # start off by seeding random number generators:
@@ -47,11 +47,25 @@ DEVICE = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 config = DatasetConfig(embeddings=glove_embeddings)
 
 words_train: List[List[str]] = config.fit_transform(text_train)
+words_vali = config.transform(text_vali)
 
-print('chars.n: {}, words.n: {}'.format(len(config.character_vocab), len(config.word_vocab)))
+print(
+    "chars.n: {}, words.n: {}".format(
+        len(config.character_vocab), len(config.word_vocab)
+    )
+)
 
 #%%
-clf = SequenceClassifier(config, char_dim=0, char_lstm_dim=0, lstm_size=16, word_dim=8, gen_layer=16, hidden_layer=0, labels=[0,1])
+clf = SequenceClassifier(
+    config,
+    char_dim=0,
+    char_lstm_dim=0,
+    lstm_size=100,
+    gen_layer=100,
+    hidden_layer=100,
+    labels=[0, 1],
+    dropout=0.0,
+)
 clf.eval()
 print(clf.forward(DEVICE, words_train[:8]))
 clf.to(DEVICE)
@@ -59,37 +73,70 @@ clf.to(DEVICE)
 loss_function = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(clf.parameters())
 
-#%%
-def train_epoch(
+
+def eval_model(
     clf: torch.nn.Module,
-    sequence_limit = 32,
-    batch_size = 32
-):
+    X: List[List[str]] = words_vali,
+    y: np.ndarray = y_vali,
+    sequence_limit=128,
+    batch_size=32,
+) -> float:
+    clf.eval()
+    N = len(X)
+    epoch_pred = []
+    losses = []
+    with tqdm(range(0, N, batch_size)) as progress:
+        for start in progress:
+            end = min(start + batch_size, N)
+            X_batch = [x[:sequence_limit] for x in X[start:end]]
+            y_batch = torch.tensor(y[start:end], dtype=torch.long).to(DEVICE)
+            y_scores = clf(DEVICE, X_batch)
+            loss = loss_function(y_scores, y_batch)
+            epoch_pred.extend(((y_scores[:, 1] - y_scores[:, 0]) > 0).tolist())
+            losses.append(loss.item())
+            progress.set_description(
+                "Acc: {:.03} Loss: {:.03}".format(
+                    metrics.accuracy_score(y[: len(epoch_pred)], epoch_pred),
+                    np.mean(losses),
+                )
+            )
+    return metrics.accuracy_score(y, epoch_pred)
+
+
+#%%
+def train_epoch(clf: torch.nn.Module, sequence_limit=32, batch_size=32):
     clf.train()
     N = len(words_train)
     X, y = shuffle(words_train, y_train)
     epoch_pred = []
-    for start in tqdm(range(0, N, batch_size)):
-        clf.train()
-        end = min(start + batch_size, N)
-        X_batch = [x[:sequence_limit] for x in X[start:end]]
-        y_batch = torch.tensor(y[start:end], dtype=torch.long).to(DEVICE)
+    losses = []
+    with tqdm(range(0, N, batch_size)) as progress:
+        for start in progress:
+            clf.train()
+            end = min(start + batch_size, N)
+            X_batch = [x[:sequence_limit] for x in X[start:end]]
+            y_batch = torch.tensor(y[start:end], dtype=torch.long).to(DEVICE)
+            clf.zero_grad()
+            y_scores = clf(DEVICE, X_batch)
+            loss = loss_function(y_scores, y_batch)
+            loss.backward()
+            optimizer.step()
 
-        clf.zero_grad()
-        y_scores = clf(DEVICE, X_batch)
-        loss = loss_function(y_scores, y_batch)
-        loss.backward()
-        optimizer.step()
+            clf.eval()
+            epoch_pred.extend(((y_scores[:, 1] - y_scores[:, 0]) > 0).tolist())
+            losses.append(loss.item())
 
-        clf.eval()
-        for lbl_scores in y_scores:
-            pred = lbl_scores[1] > lbl_scores[0]
-            epoch_pred.append(pred)
+            progress.set_description(
+                "Acc: {:.03} Loss: {:.03}".format(
+                    metrics.accuracy_score(y[: len(epoch_pred)], epoch_pred),
+                    np.mean(losses),
+                )
+            )
 
-        print("Acc: {:.3} . Batch-Loss: {:.3}".format(metrics.accuracy_score(y[:len(epoch_pred)], epoch_pred), loss.item()))
 
 train_epoch(clf, 16, 64)
 train_epoch(clf, 32, 32)
 train_epoch(clf, 32, 32)
 train_epoch(clf, 64, 16)
+train_epoch(clf, 128, 64)
 # %%

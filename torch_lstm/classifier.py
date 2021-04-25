@@ -34,9 +34,19 @@ class DatasetConfig:
             for w in self.analyzer(text):
                 words.append(w)
                 self.fit_word(w)
-                words.append("</>")
+            words.append("</>")
             xs.append(words)
         return xs
+
+    def transform(self, dataset: List[str]) -> List[List[str]]:
+        xs = []
+        for text in dataset:
+            words = ['<>']
+            for w in self.analyzer(text):
+                words.append(w)
+            words.append("</>")
+            xs.append(words)
+        return xs 
 
     def fit_word(self, word: str):
         for ch in self.word_to_chars(word):
@@ -106,30 +116,20 @@ class SequenceClassifier(nn.Module):
     def forward(self, device: torch.device, xs: List[List[str]]) -> torch.Tensor:
         N = len(xs)
         predictions = []
+        word_outputs = []
         word_vocab = self.config.word_vocab
         for words in xs:
             word_reprs: List[torch.Tensor] = []
             if hasattr(self, 'word_embed'):
                 words_i = torch.tensor([word_vocab.get(w, 0) for w in words], dtype=torch.long).to(device)
-                try:
-                    words_e = self.word_embed(words_i).reshape(1, len(words), -1)
-                except IndexError as e:
-                    print(words)
-                    print(words_i)
-                    raise e
+                words_e = self.word_embed(words_i).reshape(1, len(words), -1)
                 word_reprs.append(words_e)
             if hasattr(self, 'char_embed'):
                 word_char_reprs = []
                 for w in words:
                     chars_i = torch.tensor(self.config.word_to_char_indices(w), dtype=torch.long)
-                    try:
-                        chars_e = self.char_embed(chars_i)
-                        word_char_reprs.append(chars_e)
-                    except IndexError as e:
-                        print(w)
-                        print(self.config.word_to_chars(w))
-                        print(chars_i)
-                        raise e
+                    chars_e = self.char_embed(chars_i)
+                    word_char_reprs.append(chars_e)
 
                 char_reprs = pack_lstm(word_char_reprs, self.char_lstm).reshape(1, len(words), -1)
                 word_reprs.append(char_reprs)
@@ -141,20 +141,19 @@ class SequenceClassifier(nn.Module):
                 word_output = word_reprs[0]
             
             if hasattr(self, 'gen_layer'):
-                lstm_input = relu6(self.gen_layer(dropout(word_output, p=self.dropout)))
+                lstm_input = dropout(relu6(self.gen_layer(dropout(word_output, p=self.dropout))), p=self.dropout)
             else:
                 lstm_input = dropout(word_output, p=self.dropout)
+            word_outputs.append(lstm_input.transpose(1,2).reshape(lstm_input.shape[1], lstm_input.shape[2]))
 
-            # lstms output a whole bunch of things:
-            lstm_outputs, (hidden, _) = self.word_lstm(lstm_input)
-            #lstm_output = lstm_outputs.sum(axis=1)
-            lstm_output = hidden.transpose(0,1).reshape(1,-1)
+        # do the LSTM in bulk; it really matters:
+        lstm_output = pack_lstm(word_outputs, self.word_lstm)
 
-            if hasattr(self, 'prediction_layer'):
-                layer = relu6(self.prediction_layer(dropout(lstm_output, p=self.dropout)))
-                predictions.append(dropout(self.output_layer(layer), p=self.dropout))
-            else:
-                predictions.append(dropout(self.output_layer(lstm_output), p=self.dropout))
+        if hasattr(self, 'prediction_layer'):
+            layer = relu6(self.prediction_layer(dropout(lstm_output, p=self.dropout)))
+            return (dropout(self.output_layer(layer), p=self.dropout))
+        else:
+            return (dropout(self.output_layer(lstm_output), p=self.dropout))
         
         return torch.cat(predictions, dim=1).reshape(N, len(self.labels))
 
