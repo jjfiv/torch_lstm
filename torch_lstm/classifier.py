@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from torch.nn.functional import dropout 
 import numpy as np
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field
 from .word_embeddings import WordEmbeddings
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -92,6 +92,7 @@ class SequenceClassifier(nn.Module):
         dropout: float = 0.1,
         labels: List[int] = [0,1],
         activation: str = 'gelu',
+        averaging: Optional[Tuple[int, int]] = None,
     ):
         super(SequenceClassifier, self).__init__()
         self.config = config
@@ -119,6 +120,10 @@ class SequenceClassifier(nn.Module):
                 word_repr_size = gen_layer
             else:
                 word_repr_size += word_dim
+        if averaging:
+            (size, stride) = averaging
+            self.kernel_size = size
+            self.word_avg = nn.AvgPool1d(kernel_size=size, stride=stride, ceil_mode=True)
         self.word_lstm = nn.LSTM(word_repr_size, lstm_size, batch_first=True, bidirectional=True)
         self.word_lstm.flatten_parameters()
         if hidden_layer > 0:
@@ -157,10 +162,18 @@ class SequenceClassifier(nn.Module):
                 word_output = word_reprs[0]
             
             if hasattr(self, 'gen_layer'):
-                lstm_input = dropout(activate(self.gen_layer(dropout(word_output, p=self.dropout))), p=self.dropout)
+                word_vecs = dropout(activate(self.gen_layer(dropout(word_output, p=self.dropout))), p=self.dropout)
             else:
-                lstm_input = dropout(word_output, p=self.dropout)
-            word_outputs.append(lstm_input.transpose(1,2).reshape(lstm_input.shape[1], lstm_input.shape[2]))
+                word_vecs = dropout(word_output, p=self.dropout)
+            
+            if hasattr(self, 'word_avg') and len(words) > self.kernel_size:
+                # average adjacent words to speed up LSTM.
+                avg_word_vecs = self.word_avg(word_vecs.transpose(1,2))
+                lstm_input = avg_word_vecs.reshape(avg_word_vecs.shape[1], avg_word_vecs.shape[2])
+                word_outputs.append(lstm_input.transpose(0,1))
+            else:
+                lstm_input = word_vecs.transpose(1,2).reshape(word_vecs.shape[1], word_vecs.shape[2])
+                word_outputs.append(lstm_input)
 
         # do the LSTM in bulk; it really matters:
         lstm_output = pack_lstm(word_outputs, self.word_lstm)
@@ -170,9 +183,3 @@ class SequenceClassifier(nn.Module):
             return (dropout(self.output_layer(layer), p=self.dropout))
         else:
             return (dropout(self.output_layer(lstm_output), p=self.dropout))
-        
-        return torch.cat(predictions, dim=1).reshape(N, len(self.labels))
-
-
-#loss_function = nn.BCELoss()
-#optimizer = optim.Adam(model.parameters())

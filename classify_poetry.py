@@ -65,7 +65,8 @@ clf = SequenceClassifier(
     hidden_layer=100,
     labels=[0, 1],
     dropout=0.0,
-    activation='gelu'
+    activation='gelu',
+    averaging=(6,4)
 )
 clf.eval()
 print(clf.forward(DEVICE, words_train[:8]))
