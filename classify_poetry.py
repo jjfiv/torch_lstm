@@ -14,8 +14,8 @@ from sklearn.utils import shuffle
 from sklearn import metrics
 import os
 
-#PATH = os.environ["HOME"] + "/data/glove.6B.100d.txt.gz"
-PATH = 'poetry50k.model.vec.gz'
+PATH = os.environ["HOME"] + "/data/glove.6B.100d.txt.gz"
+#PATH = 'poetry50k.model.vec.gz'
 glove_embeddings = load_text_vectors(PATH, 400000)
 
 # start off by seeding random number generators:
@@ -69,6 +69,8 @@ clf = SequenceClassifier(
     averaging=(6,4)
 )
 clf.eval()
+
+# This print statement right here helps debug the classifier (if there are any bugs!)
 print(clf.forward(DEVICE, words_train[:8]))
 clf.to(DEVICE)
 
@@ -135,13 +137,13 @@ def train_epoch(clf: torch.nn.Module, sequence_limit=32, batch_size=32):
                 )
             )
 
-smaller = [32,32,64,64]
+# Poetry data has text SO LONG that it's worth it to chop off each page to the first ~128 words.
+MAX_WIDTH = 128
+BATCH_SIZE = 64
 for epoch in range(10):
     print("Epoch {}".format(epoch+1))
     width = 128
-    if epoch < len(smaller):
-        width = smaller[epoch]
-    train_epoch(clf, width, 64)
+    train_epoch(clf, MAX_WIDTH, BATCH_SIZE)
     if epoch >= 4:
-        eval_model(clf, sequence_limit=width)
+        eval_model(clf, sequence_limit=MAX_WIDTH)
 # %%
