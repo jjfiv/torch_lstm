@@ -1,0 +1,10 @@
+[metadata]
+name = 'torch_lstm'
+description = 'A LSTM-based classifier in Torch.'
+
+[options]
+packages = ['torch_lstm']
+
+[build-system]
+requires = ["setuptools >= 40.6.0", "wheel"]
+build-backend = "setuptools.build_meta"
