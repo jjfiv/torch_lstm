@@ -57,6 +57,7 @@ print(
 #%%
 clf = SequenceClassifier(
     config,
+    DEVICE,
     char_dim=0,
     char_lstm_dim=0,
     lstm_size=100,
@@ -70,7 +71,7 @@ clf = SequenceClassifier(
 clf.eval()
 
 # This print statement right here helps debug the classifier (if there are any bugs!)
-print(clf.forward(DEVICE, words_train[:8]))
+print(clf.forward(words_train[:8]))
 clf.to(DEVICE)
 
 loss_function = torch.nn.CrossEntropyLoss()
@@ -93,7 +94,7 @@ def eval_model(
             end = min(start + batch_size, N)
             X_batch = [x[:sequence_limit] for x in X[start:end]]
             y_batch = torch.tensor(y[start:end], dtype=torch.long).to(DEVICE)
-            y_scores = clf(DEVICE, X_batch)
+            y_scores = clf(X_batch)
             loss = loss_function(y_scores, y_batch)
             epoch_pred.extend(((y_scores[:, 1] - y_scores[:, 0]) > 0).tolist())
             losses.append(loss.item())
@@ -120,7 +121,7 @@ def train_epoch(clf: torch.nn.Module, sequence_limit=32, batch_size=32):
             X_batch = [x[:sequence_limit] for x in X[start:end]]
             y_batch = torch.tensor(y[start:end], dtype=torch.long).to(DEVICE)
             clf.zero_grad()
-            y_scores = clf(DEVICE, X_batch)
+            y_scores = clf(X_batch)
             loss = loss_function(y_scores, y_batch)
             loss.backward()
             optimizer.step()

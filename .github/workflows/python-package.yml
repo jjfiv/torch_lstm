@@ -31,3 +31,4 @@ jobs:
     - name: Test with pytest
       run: |
         pytest torch_lstm/classifier.py #TODO fix this
+        pytest torch_lstm/utils.py #TODO fix this

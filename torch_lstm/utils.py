@@ -8,18 +8,18 @@ from typing import List
 class SingleReprLSTM(torch.nn.Module):
     """ This module represents a LSTM that takes in a bunch of input and produces 1 single output. """
 
-    def __init__(self, input_dim: int, output_dim: int, bidirectional=True):
+    def __init__(
+        self, device: torch.device, input_dim: int, output_dim: int, bidirectional=True
+    ):
         super(SingleReprLSTM, self).__init__()
+        self.device = device
         self.lstm = torch.nn.LSTM(
             input_dim, output_dim, batch_first=True, bidirectional=bidirectional
         )
         self.lstm.flatten_parameters()
 
-    def forward(
-        self, device: torch.device, xs: List[List[torch.Tensor]]
-    ) -> torch.Tensor:
-        print(xs[0][0].shape)
-        return pack_lstm(xs, self.lstm, device)
+    def forward(self, xs: List[List[torch.Tensor]]) -> torch.Tensor:
+        return pack_lstm(xs, self.lstm, self.device)
 
 
 def pack_lstm(
@@ -43,3 +43,38 @@ def pack_lstm(
     by_inst_repr = hn.transpose(0, 1).reshape(N, -1)
     # Now untwizzle
     return torch.index_select(by_inst_repr, 0, origin_args)
+
+
+def test_learn_max():
+
+    DEVICE = torch.device("cpu")
+    N = 200
+    D = 5
+    X = np.random.randn(N, D)
+    y = np.max(X, axis=1)
+    assert y.shape == (N,)
+
+    # X is now NxDx1 (every element is of size... 1)
+    X = torch.from_numpy(X).float().to(DEVICE).reshape(N, D, 1)
+    y = torch.from_numpy(y).float().to(DEVICE)
+
+    m = torch.nn.Sequential(SingleReprLSTM(DEVICE, 1, D), torch.nn.Linear(D * 2, 1))
+    optim = torch.optim.Adam(m.parameters())
+    loss_fn = torch.nn.MSELoss()
+
+    losses = []
+    m.train()
+    for _ in range(20):
+        m.zero_grad()
+        yp = m.forward(X).reshape(N)
+        loss = loss_fn(yp, y)
+        loss.backward()
+        optim.step()
+        losses.append(loss.item())
+        print(loss.item())
+
+    assert losses[0] > losses[-1]
+
+
+if __name__ == "__main__":
+    test_learn_max()

@@ -91,6 +91,7 @@ class SequenceClassifier(nn.Module):
     def __init__(
         self,
         config: DatasetConfig,
+        device: torch.device,
         char_dim: int = 16,
         char_lstm_dim: int = 16,
         lstm_size: int = 32,
@@ -104,13 +105,16 @@ class SequenceClassifier(nn.Module):
     ):
         super(SequenceClassifier, self).__init__()
         self.config = config
+        self.device = device
         self.dropout = dropout
         self.labels = labels
         self.activation = activation_func(activation)
         word_repr_size = 0
         if char_dim > 0:
             self.char_embed = nn.Embedding(len(config.character_vocab) + 1, char_dim)
-            self.char_lstm = SingleReprLSTM(char_dim, char_lstm_dim, bidirectional=True)
+            self.char_lstm = SingleReprLSTM(
+                device, char_dim, char_lstm_dim, bidirectional=True
+            )
             word_repr_size += char_lstm_dim * 2
         if config.embeddings:
             (NW, ND) = config.embeddings.vectors.shape
@@ -135,14 +139,16 @@ class SequenceClassifier(nn.Module):
             self.word_avg = nn.AvgPool1d(
                 kernel_size=size, stride=stride, ceil_mode=True
             )
-        self.word_lstm = SingleReprLSTM(word_repr_size, lstm_size, bidirectional=True)
+        self.word_lstm = SingleReprLSTM(
+            device, word_repr_size, lstm_size, bidirectional=True
+        )
         if hidden_layer > 0:
             self.prediction_layer = nn.Linear(lstm_size * 2, hidden_layer)
             self.output_layer = nn.Linear(hidden_layer, len(labels))
         else:
             self.output_layer = nn.Linear(lstm_size * 2, len(labels))
 
-    def forward(self, device: torch.device, xs: List[List[str]]) -> torch.Tensor:
+    def forward(self, xs: List[List[str]]) -> torch.Tensor:
         activate = self.activation
         word_outputs = []
         word_vocab = self.config.word_vocab
@@ -151,7 +157,7 @@ class SequenceClassifier(nn.Module):
             if hasattr(self, "word_embed"):
                 words_i = torch.tensor(
                     [word_vocab.get(w, 0) for w in words], dtype=torch.long
-                ).to(device)
+                ).to(self.device)
                 words_e = self.word_embed(words_i).reshape(1, len(words), -1)
                 word_reprs.append(words_e)
             if hasattr(self, "char_embed"):
@@ -160,12 +166,10 @@ class SequenceClassifier(nn.Module):
                     chars_i = torch.tensor(
                         self.config.word_to_char_indices(w), dtype=torch.long
                     )
-                    chars_e = self.char_embed(chars_i).to(device)
+                    chars_e = self.char_embed(chars_i).to(self.device)
                     word_char_reprs.append(chars_e)
 
-                char_reprs = self.char_lstm(device, word_char_reprs).reshape(
-                    1, len(words), -1
-                )
+                char_reprs = self.char_lstm(word_char_reprs).reshape(1, len(words), -1)
                 word_reprs.append(char_reprs)
 
             # concat embeddings if needed:
@@ -196,7 +200,7 @@ class SequenceClassifier(nn.Module):
                 word_outputs.append(lstm_input)
 
         # do the LSTM in bulk; it really matters:
-        lstm_output = self.word_lstm(device, word_outputs)
+        lstm_output = self.word_lstm(word_outputs)
 
         if hasattr(self, "prediction_layer"):
             layer = activate(
@@ -243,6 +247,7 @@ def train_epoch(
 
 
 def test_tiny():
+    device = torch.device("cpu")
     y_train = [1, 1, 0, 0]
     X_train = ["I am happy.", "This is great!", "I am sad.", "This is bad."]
     config = DatasetConfig()
@@ -250,6 +255,7 @@ def test_tiny():
     for clf in [
         SequenceClassifier(
             config,
+            device,
             char_dim=4,
             char_lstm_dim=4,
             word_dim=10,
@@ -263,6 +269,7 @@ def test_tiny():
         ),
         SequenceClassifier(
             config,
+            device,
             char_dim=0,
             char_lstm_dim=0,
             word_dim=10,
