@@ -1,4 +1,4 @@
-# torch_lstm
+# torch_lstm [![Python package](https://github.com/jjfiv/torch_lstm/actions/workflows/python-package.yml/badge.svg)](https://github.com/jjfiv/torch_lstm/actions/workflows/python-package.yml)
 Package containing LSTM-based classifiers in Torch.
 
 ## What's here now?
@@ -16,6 +16,8 @@ Inside ``torch_lstm.classifier`` there's a ``SequentialClassifier`` with a clean
   clf = SequenceClassifier(
       # first argument is the updated DatasetConfig.
       config,
+      # up to you if you want 'cuda'
+      torch.device('cpu'),
       # character-embeddings useful if you have messy data, like, Twitter, or you're doing something where the shape of words matter.
       # Slow if you don't need it.
       char_dim=0,
