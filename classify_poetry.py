@@ -16,7 +16,7 @@ from torch_lstm.examples import poetry_id_split
 import os, random
 
 PATH = os.environ["HOME"] + "/data/glove.6B.100d.txt.gz"
-#PATH = 'poetry50k.model.vec.gz'
+# PATH = 'poetry50k.model.vec.gz'
 glove_embeddings = load_text_vectors(PATH, 400000)
 
 # start off by seeding random number generators:
@@ -66,8 +66,8 @@ clf = SequenceClassifier(
     hidden_layer=100,
     labels=[0, 1],
     dropout=0.0,
-    activation='gelu',
-    averaging=(6,4)
+    activation="gelu",
+    averaging=(6, 4),
 )
 clf.eval()
 
@@ -138,11 +138,12 @@ def train_epoch(clf: torch.nn.Module, sequence_limit=32, batch_size=32):
                 )
             )
 
+
 # Poetry data has text SO LONG that it's worth it to chop off each page to the first ~128 words.
 MAX_WIDTH = 128
 BATCH_SIZE = 64
 for epoch in range(10):
-    print("Epoch {}".format(epoch+1))
+    print("Epoch {}".format(epoch + 1))
     train_epoch(clf, MAX_WIDTH, BATCH_SIZE)
     eval_model(clf, sequence_limit=MAX_WIDTH)
 # %%

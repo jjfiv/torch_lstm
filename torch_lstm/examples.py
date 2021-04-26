@@ -5,11 +5,13 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from dataclasses import dataclass
 
+
 @dataclass
 class DatasetSplit:
     train: pd.DataFrame
     vali: pd.DataFrame
     test: pd.DataFrame
+
 
 def download_file(url: str, path: str) -> str:
     """ Download url to path if path is not already downloaded! """
@@ -24,10 +26,12 @@ def download_file(url: str, path: str) -> str:
             out.write(f.read())
     return path
 
+
 def poetry_id() -> str:
-    url = 'http://ciir.cs.umass.edu/downloads/poetry/id_datasets.jsonl'
-    path = 'poetry_id.jsonl'
+    url = "http://ciir.cs.umass.edu/downloads/poetry/id_datasets.jsonl"
+    path = "poetry_id.jsonl"
     return download_file(url, path)
+
 
 def poetry_id_split(seed=12345) -> DatasetSplit:
     df: pd.DataFrame = pd.read_json(poetry_id(), lines=True)
