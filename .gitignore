@@ -1,5 +1,7 @@
 /venv/
 /.vscode
 __pycache__
-*jsonl
+*.jsonl
 *.prof
+*.egg-info
+/dist

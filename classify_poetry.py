@@ -12,7 +12,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.utils import shuffle
 from sklearn import metrics
-import os
+from torch_lstm.examples import poetry_id_split
+import os, random
 
 PATH = os.environ["HOME"] + "/data/glove.6B.100d.txt.gz"
 #PATH = 'poetry50k.model.vec.gz'
@@ -20,14 +21,14 @@ glove_embeddings = load_text_vectors(PATH, 400000)
 
 # start off by seeding random number generators:
 RANDOM_SEED = 12345
+random.seed(RANDOM_SEED)
+np.random.seed(RANDOM_SEED)
+torch.manual_seed(RANDOM_SEED)
 
-df: pd.DataFrame = pd.read_json("poetry_id.jsonl", lines=True)
-
-features = pd.json_normalize(df.features)
-features = features.join([df.poetry, df.words])
-
-tv_f, test_f = train_test_split(features, test_size=0.25, random_state=RANDOM_SEED)
-train_f, vali_f = train_test_split(tv_f, test_size=0.25, random_state=RANDOM_SEED)
+poetry_id = poetry_id_split()
+train_f = poetry_id.train
+vali_f = poetry_id.vali
+test_f = poetry_id.test
 
 textual = TfidfVectorizer(max_df=0.75, min_df=2, dtype=np.float32)
 tokenizer = textual.build_analyzer()
@@ -142,8 +143,6 @@ MAX_WIDTH = 128
 BATCH_SIZE = 64
 for epoch in range(10):
     print("Epoch {}".format(epoch+1))
-    width = 128
     train_epoch(clf, MAX_WIDTH, BATCH_SIZE)
-    if epoch >= 4:
-        eval_model(clf, sequence_limit=MAX_WIDTH)
+    eval_model(clf, sequence_limit=MAX_WIDTH)
 # %%
