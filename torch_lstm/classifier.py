@@ -1,7 +1,7 @@
 from torch.nn.modules import loss
 from torch_lstm.word_embeddings import WordEmbeddings
 from torch.nn.functional import dropout, embedding
-from .utils import pack_lstm
+from .utils import SingleReprLSTM
 import torch
 from torch import nn
 from torch.nn.functional import dropout
@@ -86,6 +86,8 @@ def activation_func(name: str):
 
 
 class SequenceClassifier(nn.Module):
+    """ This module represents a text classification algorithm. """
+
     def __init__(
         self,
         config: DatasetConfig,
@@ -108,10 +110,7 @@ class SequenceClassifier(nn.Module):
         word_repr_size = 0
         if char_dim > 0:
             self.char_embed = nn.Embedding(len(config.character_vocab) + 1, char_dim)
-            self.char_lstm = nn.LSTM(
-                char_dim, char_lstm_dim, batch_first=True, bidirectional=True
-            )
-            self.char_lstm.flatten_parameters()
+            self.char_lstm = SingleReprLSTM(char_dim, char_lstm_dim, bidirectional=True)
             word_repr_size += char_lstm_dim * 2
         if config.embeddings:
             (NW, ND) = config.embeddings.vectors.shape
@@ -136,10 +135,7 @@ class SequenceClassifier(nn.Module):
             self.word_avg = nn.AvgPool1d(
                 kernel_size=size, stride=stride, ceil_mode=True
             )
-        self.word_lstm = nn.LSTM(
-            word_repr_size, lstm_size, batch_first=True, bidirectional=True
-        )
-        self.word_lstm.flatten_parameters()
+        self.word_lstm = SingleReprLSTM(word_repr_size, lstm_size, bidirectional=True)
         if hidden_layer > 0:
             self.prediction_layer = nn.Linear(lstm_size * 2, hidden_layer)
             self.output_layer = nn.Linear(hidden_layer, len(labels))
@@ -159,15 +155,15 @@ class SequenceClassifier(nn.Module):
                 words_e = self.word_embed(words_i).reshape(1, len(words), -1)
                 word_reprs.append(words_e)
             if hasattr(self, "char_embed"):
-                word_char_reprs = []
+                word_char_reprs: List[torch.Tensor] = []
                 for w in words:
                     chars_i = torch.tensor(
                         self.config.word_to_char_indices(w), dtype=torch.long
                     )
-                    chars_e = self.char_embed(chars_i)
+                    chars_e = self.char_embed(chars_i).to(device)
                     word_char_reprs.append(chars_e)
 
-                char_reprs = pack_lstm(word_char_reprs, self.char_lstm, device).reshape(
+                char_reprs = self.char_lstm(device, word_char_reprs).reshape(
                     1, len(words), -1
                 )
                 word_reprs.append(char_reprs)
@@ -200,7 +196,7 @@ class SequenceClassifier(nn.Module):
                 word_outputs.append(lstm_input)
 
         # do the LSTM in bulk; it really matters:
-        lstm_output = pack_lstm(word_outputs, self.word_lstm, device)
+        lstm_output = self.word_lstm(device, word_outputs)
 
         if hasattr(self, "prediction_layer"):
             layer = activate(
@@ -251,18 +247,34 @@ def test_tiny():
     X_train = ["I am happy.", "This is great!", "I am sad.", "This is bad."]
     config = DatasetConfig()
     X_ready = config.fit_transform(X_train)
-    clf = SequenceClassifier(
-        config,
-        char_dim=0,
-        char_lstm_dim=0,
-        lstm_size=100,
-        gen_layer=100,
-        hidden_layer=100,
-        labels=[0, 1],
-        dropout=0.0,
-        activation="gelu",
-        averaging=(6, 4),
-    )
-    optimizer = torch.optim.Adam(params=clf.parameters())
-    loss_function = torch.nn.CrossEntropyLoss()
-    train_epoch(clf, optimizer, loss_function, X_ready, y_train)
+    for clf in [
+        SequenceClassifier(
+            config,
+            char_dim=4,
+            char_lstm_dim=4,
+            word_dim=10,
+            lstm_size=10,
+            gen_layer=10,
+            hidden_layer=10,
+            labels=[0, 1],
+            dropout=0.0,
+            activation="gelu",
+            averaging=(6, 4),
+        ),
+        SequenceClassifier(
+            config,
+            char_dim=0,
+            char_lstm_dim=0,
+            word_dim=10,
+            lstm_size=10,
+            gen_layer=10,
+            hidden_layer=10,
+            labels=[0, 1],
+            dropout=0.0,
+            activation="gelu",
+            averaging=None,
+        ),
+    ]:
+        optimizer = torch.optim.Adam(params=clf.parameters())
+        loss_function = torch.nn.CrossEntropyLoss()
+        train_epoch(clf, optimizer, loss_function, X_ready, y_train)
