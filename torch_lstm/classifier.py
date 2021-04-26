@@ -167,7 +167,7 @@ class SequenceClassifier(nn.Module):
                     chars_e = self.char_embed(chars_i)
                     word_char_reprs.append(chars_e)
 
-                char_reprs = pack_lstm(word_char_reprs, self.char_lstm).reshape(
+                char_reprs = pack_lstm(word_char_reprs, self.char_lstm, device).reshape(
                     1, len(words), -1
                 )
                 word_reprs.append(char_reprs)
@@ -200,7 +200,7 @@ class SequenceClassifier(nn.Module):
                 word_outputs.append(lstm_input)
 
         # do the LSTM in bulk; it really matters:
-        lstm_output = pack_lstm(word_outputs, self.word_lstm)
+        lstm_output = pack_lstm(word_outputs, self.word_lstm, device)
 
         if hasattr(self, "prediction_layer"):
             layer = activate(

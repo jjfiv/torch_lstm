@@ -5,13 +5,17 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_sequence
 from typing import List
 
 
-def pack_lstm(items: List[List[torch.Tensor]], lstm: torch.nn.Module) -> torch.Tensor:
+def pack_lstm(
+    items: List[List[torch.Tensor]],
+    lstm: torch.nn.Module,
+    device: torch.device,
+) -> torch.Tensor:
     """
     Pack items to more efficiently use the LSTM.
     """
     N = len(items)
     reorder_args = np.argsort([len(it) for it in items])[::-1]
-    origin_args = torch.from_numpy(np.argsort(reorder_args))
+    origin_args = torch.from_numpy(np.argsort(reorder_args)).to(device)
     ordered = [items[i] for i in reorder_args]
     packed_items = pack_padded_sequence(
         pad_sequence(ordered, batch_first=True),

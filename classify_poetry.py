@@ -1,11 +1,9 @@
 #%%
 import numpy as np
 from typing import Tuple, Dict, List
-import pandas as pd
 import torch
 from torch_lstm.word_embeddings import load_text_vectors, WordEmbeddings
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction import DictVectorizer
 from sklearn.preprocessing import StandardScaler
