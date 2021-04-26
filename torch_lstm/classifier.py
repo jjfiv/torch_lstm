@@ -234,7 +234,7 @@ def train_epoch(
             X_batch = [x[:sequence_limit] for x in X[start:end]]
             y_batch = torch.tensor(y[start:end], dtype=torch.long).to(device)
             clf.zero_grad()
-            y_scores = clf(device, X_batch)
+            y_scores = clf(X_batch)
             loss = loss_function(y_scores, y_batch)
             loss.backward()
             optimizer.step()
