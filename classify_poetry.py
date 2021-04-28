@@ -39,7 +39,7 @@ y_train = train_f.poetry.values
 y_vali = vali_f.poetry.values
 y_test = test_f.poetry.values
 
-from torch_lstm.classifier import DatasetConfig, SequenceClassifier
+from torch_lstm.classifier import DatasetConfig, SequenceClassifier, SlidingAverage
 from tqdm import tqdm
 
 text_train: List[str] = train_f.words.to_list()
@@ -70,9 +70,10 @@ clf = SequenceClassifier(
     labels=[0, 1],
     dropout=0.0,
     activation="gelu",
-    averaging=(6, 4),
+    averaging=SlidingAverage(6, 4, weighted=True),
 )
 clf.eval()
+print(clf)
 
 # This print statement right here helps debug the classifier (if there are any bugs!)
 print(clf.forward(words_train[:8]))
