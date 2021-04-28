@@ -9,17 +9,28 @@ class SingleReprLSTM(torch.nn.Module):
     """ This module represents a LSTM that takes in a bunch of input and produces 1 single output. """
 
     def __init__(
-        self, device: torch.device, input_dim: int, output_dim: int, bidirectional=True
+        self, device: torch.device, input_dim: int, output_dim: int, bidirectional=True, layers=1
     ):
         super(SingleReprLSTM, self).__init__()
         self.device = device
         self.lstm = torch.nn.LSTM(
-            input_dim, output_dim, batch_first=True, bidirectional=bidirectional
+            input_dim, output_dim, batch_first=True, bidirectional=bidirectional, num_layers=layers
         )
         self.lstm.flatten_parameters()
+        # record dimensions:
+        self.layers = layers
+        self.output_dim = output_dim
+        self.bidirectional = bidirectional
 
     def forward(self, xs: List[List[torch.Tensor]]) -> torch.Tensor:
         return pack_lstm(xs, self.lstm, self.device)
+
+    def get_output_width(self) -> int:
+        n = self.layers * self.output_dim
+        if self.bidirectional:
+            return n * 2
+        return n
+
 
 
 def pack_lstm(

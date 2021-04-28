@@ -96,6 +96,7 @@ class SequenceClassifier(nn.Module):
         char_lstm_dim: int = 16,
         lstm_size: int = 32,
         word_dim: int = 300,  # inferred from pretrained_words
+        word_lstm_layers: int = 1,
         gen_layer: int = 100,
         hidden_layer: int = 0,
         dropout: float = 0.1,
@@ -115,7 +116,7 @@ class SequenceClassifier(nn.Module):
             self.char_lstm = SingleReprLSTM(
                 device, char_dim, char_lstm_dim, bidirectional=True
             )
-            word_repr_size += char_lstm_dim * 2
+            word_repr_size += self.char_lstm.get_output_width()
         if config.embeddings:
             (NW, ND) = config.embeddings.vectors.shape
             self.word_embed = nn.Embedding(NW, ND)
@@ -140,13 +141,14 @@ class SequenceClassifier(nn.Module):
                 kernel_size=size, stride=stride, ceil_mode=True
             )
         self.word_lstm = SingleReprLSTM(
-            device, word_repr_size, lstm_size, bidirectional=True
+            device, word_repr_size, lstm_size, bidirectional=True, layers=word_lstm_layers,
         )
+        lstm_output_size = self.word_lstm.get_output_width()
         if hidden_layer > 0:
-            self.prediction_layer = nn.Linear(lstm_size * 2, hidden_layer)
+            self.prediction_layer = nn.Linear(lstm_output_size, hidden_layer)
             self.output_layer = nn.Linear(hidden_layer, len(labels))
         else:
-            self.output_layer = nn.Linear(lstm_size * 2, len(labels))
+            self.output_layer = nn.Linear(lstm_output_size, len(labels))
         self.to(device)
 
     def forward(self, xs: List[List[str]]) -> torch.Tensor:

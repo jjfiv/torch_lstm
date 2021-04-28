@@ -42,3 +42,16 @@ def poetry_id_split(seed=12345) -> DatasetSplit:
     train_f, vali_f = train_test_split(tv_f, test_size=0.25, random_state=seed)
 
     return DatasetSplit(train_f, vali_f, test_f)
+
+def wiki_lit() -> str:
+    url = "http://static.jjfoley.me/lit-wiki-2020.jsonl.gz"
+    path = "lit-wiki-2020.jsonl.gz"
+    return download_file(url, path)
+
+def wiki_lit_split(seed=12345) -> DatasetSplit:
+    df: pd.DataFrame = pd.read_json(wiki_lit(), lines=True)
+
+    tv_f, test_f = train_test_split(df, test_size=0.25, random_state=seed)
+    train_f, vali_f = train_test_split(tv_f, test_size=0.25, random_state=seed)
+
+    return DatasetSplit(train_f, vali_f, test_f)
