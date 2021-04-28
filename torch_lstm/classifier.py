@@ -147,6 +147,7 @@ class SequenceClassifier(nn.Module):
             self.output_layer = nn.Linear(hidden_layer, len(labels))
         else:
             self.output_layer = nn.Linear(lstm_size * 2, len(labels))
+        self.to(device)
 
     def forward(self, xs: List[List[str]]) -> torch.Tensor:
         activate = self.activation
@@ -165,7 +166,7 @@ class SequenceClassifier(nn.Module):
                 for w in words:
                     chars_i = torch.tensor(
                         self.config.word_to_char_indices(w), dtype=torch.long
-                    )
+                    ).to(self.device)
                     chars_e = self.char_embed(chars_i).to(self.device)
                     word_char_reprs.append(chars_e)
 

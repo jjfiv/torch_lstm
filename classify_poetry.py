@@ -15,7 +15,10 @@ import os, random
 
 PATH = os.environ["HOME"] + "/data/glove.6B.100d.txt.gz"
 # PATH = 'poetry50k.model.vec.gz'
-glove_embeddings = load_text_vectors(PATH, 400000)
+if os.path.exists(PATH):
+    glove_embeddings = load_text_vectors(PATH, 400000)
+else:
+    glove_embeddings = None
 
 # start off by seeding random number generators:
 RANDOM_SEED = 12345
@@ -59,9 +62,10 @@ clf = SequenceClassifier(
     config,
     DEVICE,
     char_dim=0,
-    char_lstm_dim=0,
+    char_lstm_dim=8,
+    word_dim=100,
     lstm_size=100,
-    gen_layer=100,
+    gen_layer=100 if config.embeddings else 0,
     hidden_layer=100,
     labels=[0, 1],
     dropout=0.0,
