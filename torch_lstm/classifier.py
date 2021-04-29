@@ -6,7 +6,7 @@ import torch
 from torch import nn
 from torch.nn.functional import dropout
 import numpy as np
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Union
 from dataclasses import dataclass, field
 from .word_embeddings import WordEmbeddings
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -85,6 +85,21 @@ def activation_func(name: str):
         raise ValueError(name)
 
 
+@dataclass
+class SlidingAverage:
+    width: int
+    stride: int
+    weighted: bool = False  # average
+
+    def to_layer(self, dim: int) -> torch.nn.Module:
+        if not self.weighted:
+            return nn.AvgPool1d(
+                kernel_size=self.width, stride=self.stride, ceil_mode=True
+            )
+        else:
+            return nn.Conv1d(dim, dim, kernel_size=self.width, stride=self.stride)
+
+
 class SequenceClassifier(nn.Module):
     """ This module represents a text classification algorithm. """
 
@@ -102,7 +117,7 @@ class SequenceClassifier(nn.Module):
         dropout: float = 0.1,
         labels: List[int] = [0, 1],
         activation: str = "gelu",
-        averaging: Optional[Tuple[int, int]] = None,
+        averaging: Optional[Union[Tuple[int, int], SlidingAverage]] = None,
     ):
         super(SequenceClassifier, self).__init__()
         self.config = config
@@ -116,7 +131,7 @@ class SequenceClassifier(nn.Module):
             self.char_lstm = SingleReprLSTM(
                 device, char_dim, char_lstm_dim, bidirectional=True
             )
-            word_repr_size += self.char_lstm.get_output_width()
+            word_repr_size += char_lstm_dim * 2
         if config.embeddings:
             (NW, ND) = config.embeddings.vectors.shape
             self.word_embed = nn.Embedding(NW, ND)
@@ -135,11 +150,15 @@ class SequenceClassifier(nn.Module):
             else:
                 word_repr_size += word_dim
         if averaging:
-            (size, stride) = averaging
-            self.kernel_size = size
-            self.word_avg = nn.AvgPool1d(
-                kernel_size=size, stride=stride, ceil_mode=True
-            )
+            if isinstance(averaging, SlidingAverage):
+                self.kernel_size = averaging.width
+                self.word_avg = averaging.to_layer(word_repr_size)
+            else:
+                (size, stride) = averaging
+                self.kernel_size = size
+                self.word_avg = nn.AvgPool1d(
+                    kernel_size=size, stride=stride, ceil_mode=True
+                )
         self.word_lstm = SingleReprLSTM(
             device, word_repr_size, lstm_size, bidirectional=True, layers=word_lstm_layers,
         )
@@ -255,34 +274,35 @@ def test_tiny():
     X_train = ["I am happy.", "This is great!", "I am sad.", "This is bad."]
     config = DatasetConfig()
     X_ready = config.fit_transform(X_train)
+    clf_args = {
+        "config": config,
+        "device": device,
+        "char_dim": 4,
+        "char_lstm_dim": 4,
+        "word_dim": 10,
+        "lstm_size": 10,
+        "gen_layer": 10,
+        "hidden_layer": 10,
+        "labels": [0, 1],
+        "dropout": 0.0,
+        "activation": "gelu",
+    }
     for clf in [
         SequenceClassifier(
-            config,
-            device,
-            char_dim=4,
-            char_lstm_dim=4,
-            word_dim=10,
-            lstm_size=10,
-            gen_layer=10,
-            hidden_layer=10,
-            labels=[0, 1],
-            dropout=0.0,
-            activation="gelu",
-            averaging=(6, 4),
+            **clf_args,
+            averaging=(2, 1),
         ),
         SequenceClassifier(
-            config,
-            device,
-            char_dim=0,
-            char_lstm_dim=0,
-            word_dim=10,
-            lstm_size=10,
-            gen_layer=10,
-            hidden_layer=10,
-            labels=[0, 1],
-            dropout=0.0,
-            activation="gelu",
+            **clf_args,
             averaging=None,
+        ),
+        SequenceClassifier(
+            **clf_args,
+            averaging=SlidingAverage(2, 1),
+        ),
+        SequenceClassifier(
+            **clf_args,
+            averaging=SlidingAverage(2, 1, True),
         ),
     ]:
         optimizer = torch.optim.Adam(params=clf.parameters())

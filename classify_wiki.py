@@ -39,7 +39,7 @@ y_train = train_f.truth_value.values
 y_vali = vali_f.truth_value.values
 y_test = test_f.truth_value.values
 
-from torch_lstm.classifier import DatasetConfig, SequenceClassifier
+from torch_lstm.classifier import DatasetConfig, SequenceClassifier, SlidingAverage
 from tqdm import tqdm
 
 text_train: List[str] = train_f.body.to_list()
@@ -71,7 +71,7 @@ clf = SequenceClassifier(
     labels=[0, 1],
     dropout=0.0,
     activation="gelu",
-    averaging=(6, 4),
+    averaging=SlidingAverage(6, 4, weighted=True),
 )
 clf.eval()
 
