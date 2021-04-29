@@ -68,6 +68,21 @@ class DatasetConfig:
         return [self.character_vocab.get(ch, 0) for ch in self.word_to_chars(word)]
 
 
+def activation_layer(name: str):
+    if name == "relu6":
+        return nn.ReLU6()
+    elif name == "relu":
+        return nn.ReLU()
+    elif name == "sigmoid":
+        return nn.Sigmoid()
+    elif name == "gelu":
+        return nn.GELU()
+    elif name == "tanh":
+        return nn.Tanh()
+    else:
+        raise ValueError(name)
+
+
 def activation_func(name: str):
     import torch.nn.functional
 
@@ -160,7 +175,11 @@ class SequenceClassifier(nn.Module):
                     kernel_size=size, stride=stride, ceil_mode=True
                 )
         self.word_lstm = SingleReprLSTM(
-            device, word_repr_size, lstm_size, bidirectional=True, layers=word_lstm_layers,
+            device,
+            word_repr_size,
+            lstm_size,
+            bidirectional=True,
+            layers=word_lstm_layers,
         )
         lstm_output_size = self.word_lstm.get_output_width()
         if hidden_layer > 0:
@@ -233,6 +252,62 @@ class SequenceClassifier(nn.Module):
             return dropout(self.output_layer(lstm_output), p=self.dropout)
 
 
+class AverageEmbeddingClassifier(torch.nn.Module):
+    """ This classifier is more efficient; built around a Average of Embeddings. """
+
+    def __init__(
+        self,
+        config: DatasetConfig,
+        device: torch.device,
+        word_dim: int = 300,  # inferred from pretrained_words
+        hidden_layers: List[int] = [300],
+        dropout: float = 0.0,
+        labels: List[int] = [0, 1],
+        activation: str = "gelu",
+    ):
+        super(AverageEmbeddingClassifier, self).__init__()
+        self.config = config
+        self.device = device
+        self.dropout = dropout
+        self.labels = labels
+        if config.embeddings:
+            (NW, ND) = config.embeddings.vectors.shape
+            self.embeddings = nn.Embedding(NW, ND)
+            self.embeddings.weight.data.copy_(
+                torch.from_numpy(config.embeddings.vectors)
+            )
+            self.embeddings.requires_grad_(False)
+            word_dim = ND
+        else:
+            self.embeddings = nn.Embedding(config.word_vocab_len(), word_dim)
+
+        layers = []
+        for i, dim in enumerate(hidden_layers):
+            input_dim = word_dim
+            if i > 0:
+                input_dim = hidden_layers[i - 1]
+            layers.append(nn.Linear(input_dim, dim))
+            layers.append(nn.Dropout(p=self.dropout))
+            layers.append(activation_layer(activation))
+        if len(hidden_layers) > 0:
+            layers.append(nn.Linear(hidden_layers[-1], len(labels)))
+        else:
+            layers.append(nn.Linear(word_dim, len(labels)))
+        self.mlp = nn.Sequential(*layers)
+        self.to(self.device)
+
+    def forward(self, xs: List[List[str]]) -> torch.Tensor:
+        word_vocab = self.config.word_vocab
+        avg_embed = []
+        for words in xs:
+            words_i = torch.tensor(
+                [word_vocab.get(w, 0) for w in words], dtype=torch.long
+            ).to(self.device)
+            words_e = self.embeddings(words_i)
+            avg_embed.append(torch.mean(words_e, dim=0).view(1, -1))
+        return self.mlp(torch.cat(avg_embed, dim=0))
+
+
 #%%
 def train_epoch(
     clf: torch.nn.Module,
@@ -303,6 +378,39 @@ def test_tiny():
         SequenceClassifier(
             **clf_args,
             averaging=SlidingAverage(2, 1, True),
+        ),
+    ]:
+        optimizer = torch.optim.Adam(params=clf.parameters())
+        loss_function = torch.nn.CrossEntropyLoss()
+        train_epoch(clf, optimizer, loss_function, X_ready, y_train)
+
+
+def test_tiny_avg():
+    device = torch.device("cpu")
+    y_train = [1, 1, 0, 0]
+    X_train = ["I am happy.", "This is great!", "I am sad.", "This is bad."]
+    config = DatasetConfig()
+    X_ready = config.fit_transform(X_train)
+    clf_args = {
+        "config": config,
+        "device": device,
+        "word_dim": 10,
+        "labels": [0, 1],
+        "dropout": 0.0,
+        "activation": "gelu",
+    }
+    for clf in [
+        AverageEmbeddingClassifier(
+            **clf_args,
+            hidden_layers=[],
+        ),
+        AverageEmbeddingClassifier(
+            **clf_args,
+            hidden_layers=[10],
+        ),
+        AverageEmbeddingClassifier(
+            **clf_args,
+            hidden_layers=[10, 10],
         ),
     ]:
         optimizer = torch.optim.Adam(params=clf.parameters())
