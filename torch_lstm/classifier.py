@@ -147,7 +147,7 @@ class SequenceClassifier(nn.Module):
                 device, char_dim, char_lstm_dim, bidirectional=True
             )
             word_repr_size += char_lstm_dim * 2
-        if config.embeddings:
+        if config.embeddings is not None:
             (NW, ND) = config.embeddings.vectors.shape
             self.word_embed = nn.Embedding(NW, ND)
             self.word_embed.weight.data.copy_(
@@ -270,7 +270,7 @@ class AverageEmbeddingClassifier(torch.nn.Module):
         self.device = device
         self.dropout = dropout
         self.labels = labels
-        if config.embeddings:
+        if config.embeddings is not None:
             (NW, ND) = config.embeddings.vectors.shape
             self.embeddings = nn.Embedding(NW, ND)
             self.embeddings.weight.data.copy_(
